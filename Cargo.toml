@@ -1,0 +1,12 @@
+[package]
+name = "shinybox"
+version = "0.1.0"
+authors = ["mordisk"]
+edition = "2021"
+
+[dependencies]
+tokio = { version = "1.32.0", features = ["full"] }
+actix-web = "4"
+actix-multipart = "0.6.1"
+futures = "0.3.28"
+toml = "0.8.0"
