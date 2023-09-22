@@ -71,7 +71,8 @@ async fn upload(mut payload: Multipart, request: HttpRequest) -> HttpResponse {
 
             if field.content_type().is_none() { continue; }
 
-            let file_name = field.content_disposition().get_filename().clone().unwrap();
+            let file_name = field.content_disposition().get_filename().unwrap().to_string();
+            let file_extension = utils::get_file_extension(&file_name);
 
             let destination = format!("./uploads/{}", &file_name);
             let mut saved_file: fs::File = fs::File::create(&destination).await.unwrap();
@@ -80,7 +81,6 @@ async fn upload(mut payload: Multipart, request: HttpRequest) -> HttpResponse {
                 let _ = saved_file.write_all(&chunk).await.unwrap();
             }
 
-            let file_extension = utils::get_file_extension(&file_name);
             let file_size = content_size;
             let file_size_suffix = utils::get_size_suffix(&file_size);
 
