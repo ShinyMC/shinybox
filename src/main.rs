@@ -68,41 +68,41 @@ impl File {
     }
 }
 
-// TODO load these from config.toml
-const MAX_FILE_SIZE: u64 = 10 * 1024 * 1024;
-const MAX_FILE_COUNT: usize = 3;
-
 #[post("/upload")]
 async fn upload(mut payload: Multipart, request: HttpRequest) -> HttpResponse {
-    let total_size: u64 = match request.headers().get(CONTENT_LENGTH) {
+    let total_size: usize = match request.headers().get(CONTENT_LENGTH) {
         Some(hv) => hv.to_str().unwrap_or("0").parse().unwrap(),
         None => 0
     };
+
+    let mut files: Vec<File> = Vec::new();
+
+    // TODO get these from config.toml
+    let max_file_size: usize = 10 * 1024 * 1024;
+    let max_file_count: usize = 3;
+
+    // check if the maximum file size is exceeded
+    if total_size >= max_file_size {
+        return json(ErrorResponse {
+            status: false,
+            error: String::from("Maximum file size exceeded (10MB)")
+        });
+    }
 
     // check if there are is any file uploaded
     if total_size == 0 {
         return json(ErrorResponse {
             status: false,
-            cause: String::from("The file is empty or missing")
+            error: String::from("The file is empty or missing")
         });
     }
-
-    // check if the maximum file size is exceeded
-    if total_size > MAX_FILE_SIZE {
-        return json(ErrorResponse {
-            status: false,
-            cause: String::from("Maximum file size exceeded (10MB)")
-        });
-    }
-
-    let mut files: Vec<File> = Vec::new();
 
     loop {
         // check if the maximum file count is exceeded
-        if files.len() >= MAX_FILE_COUNT {
+        if files.len() >= max_file_count {
             return json(ErrorResponse {
                 status: false,
-                cause: String::from("Maximum file count exceeded (3)")
+                error: String::from("Maximum file count exceeded (3)")
             });
         }
 
@@ -148,7 +148,7 @@ async fn upload(mut payload: Multipart, request: HttpRequest) -> HttpResponse {
     if files.len() == 0 {
         return json(ErrorResponse {
             status: false,
-            cause: String::from("No files were uploaded")
+            error: String::from("No files were uploaded")
         });
     }
 
@@ -176,7 +176,7 @@ async fn upload(mut payload: Multipart, request: HttpRequest) -> HttpResponse {
 }
 
 fn json<T: Serialize>(response: T) -> HttpResponse {
-    HttpResponse::Ok().append_header(("Content-Type", "application/json")).json(web::Json(response))
+    HttpResponse::Ok().json(response)
 }
 
 #[derive(Serialize)]
@@ -188,7 +188,7 @@ struct UploadResponse {
 #[derive(Serialize)]
 struct ErrorResponse {
     status: bool,
-    cause: String
+    error: String
 }
 
 #[get("/get/{token}")]

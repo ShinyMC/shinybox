@@ -26,7 +26,7 @@ pub fn get_file_size(path: &str) -> Result<u64, &'static str> {
     return Ok(path.size_on_disk_fast(&metadata).unwrap());
 }
 
-pub fn get_readable_size(size: &u64) -> String {
+pub fn get_readable_size(size: &usize) -> String {
     human_bytes(size.clone() as f64)
 }
 
