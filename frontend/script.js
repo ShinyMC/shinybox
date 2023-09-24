@@ -101,10 +101,10 @@ async function showResult(response) {
         }
     }
     else {
-        let cause = response["cause"];
+        let cause = response["error"];
         let icon = "<svg data-id=\"19\" fill=\"none\" height=\"24\" stroke=\"white\" stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" viewBox=\"0 0 24 24\" width=\"24\" xmlns=\"http://www.w3.org/2000/svg\"><path d=\"m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z\" /><path d=\"M12 9v4\" /><path d=\"M12 17h.01\" /></svg>";
 
-        setResult("Failed", "sa", cause);
+        setResult("Failed", "", cause);
         setIcon(icon);
     }
 }
