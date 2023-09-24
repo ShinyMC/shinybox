@@ -2,42 +2,32 @@ name: Release
 on: [ push, pull_request ]
 
 permissions:
-  contents: write
+  contents: read
+  packages: write
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
   build:
+    name: release ${{ matrix.target }}
     runs-on: ubuntu-latest
+
     if: "!contains(github.event.commits[0].message, '[skip]')"
+
     strategy:
       fail-fast: true
       matrix:
-        target: [ x86_64-unknown-linux-musl ]
+        target: [x86_64-pc-windows-gnu, x86_64-unknown-linux-musl]
+
     steps:
     - name: Checkout Sources
       uses: actions/checkout@master
 
-    - name: Compile Rust
+    - name: Compile And Release
       uses: rust-build/rust-build.action@v1.4.3
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         RUSTTARGET: ${{ matrix.target }}
-        UPLOAD_MODE: none
-
-    - name: Upload Artifact
-      uses: actions/upload-artifact@v3
-      with:
-        name: shinybox
-        path: |
-          ${{ steps.build.outputs.BUILT_ARCHIVE }}
-          ${{ steps.build.outputs.BUILT_CHECKSUM }}
-
-    - name: Create Release
-      uses: softprops/action-gh-release@v1
-      with:
-        name: shinybox
-        tag_name: action-v${{ github.run_number }}
-        files: |
-          ${{ steps.build.outputs.BUILT_ARCHIVE }}
-          ${{ steps.build.outputs.BUILT_CHECKSUM }}
+        EXTRA_FILES: "README.md LICENSE"
