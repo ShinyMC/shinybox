@@ -1,10 +1,8 @@
-name: Build
+name: Release
+on: [ push, pull_request ]
 
-on:
-  push:
-    branches: [ "master" ]
-  pull_request:
-    branches: [ "master" ]
+permissions:
+  contents: write
 
 env:
   CARGO_TERM_COLOR: always
@@ -12,20 +10,46 @@ env:
 jobs:
   build:
     runs-on: ubuntu-latest
+    if: "!contains(github.event.commits[0].message, '[skip]')"
     steps:
-    - uses: actions/checkout@master
-    - name: Compile
-      id: compile
+    - name: Checkout Sources
+      uses: actions/checkout@master
+
+    - name: Compile Rust
       uses: rust-build/rust-build.action@v1.4.3
       with:
         RUSTTARGET: x86_64-unknown-linux-musl
         UPLOAD_MODE: none
+
     - name: Run Tests
       run: cargo test --verbose
+
     - name: Upload Artifact
       uses: actions/upload-artifact@v3
       with:
         name: Binary
         path: |
+          ${{ steps.compile.outputs.BUILT_ARCHIVE }}
+          ${{ steps.compile.outputs.BUILT_CHECKSUM }}
+
+    - name: Upload Artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: Binary
+        path: |
+          ${{ steps.compile.outputs.BUILT_ARCHIVE }}
+          ${{ steps.compile.outputs.BUILT_CHECKSUM }}
+
+    - name: Create release
+      uses: Roang-zero1/github-create-release-action@v2
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Create Release
+      uses: softprops/action-gh-release@v1
+      with:
+        name: shinybox
+        tag_name: action-v${{ github.run_number }}
+        files: |
           ${{ steps.compile.outputs.BUILT_ARCHIVE }}
           ${{ steps.compile.outputs.BUILT_CHECKSUM }}
