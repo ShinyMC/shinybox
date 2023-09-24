@@ -53,6 +53,8 @@ async fn page_script() -> HttpResponse {
         .body(include_str!("../frontend/script.js"))
 }
 
+// TODO load favicon from file
+
 struct File {
     id: usize,
     name: String,
@@ -66,17 +68,18 @@ impl File {
     }
 }
 
+// TODO load these from config.toml
 const MAX_FILE_SIZE: u64 = 10 * 1024 * 1024;
 const MAX_FILE_COUNT: usize = 3;
 
 #[post("/upload")]
 async fn upload(mut payload: Multipart, request: HttpRequest) -> HttpResponse {
-    // limit the file size
     let total_size: u64 = match request.headers().get(CONTENT_LENGTH) {
         Some(hv) => hv.to_str().unwrap_or("0").parse().unwrap(),
         None => 0
     };
 
+    // check if there are is any file uploaded
     if total_size == 0 {
         return json(ErrorResponse {
             status: false,
@@ -84,6 +87,7 @@ async fn upload(mut payload: Multipart, request: HttpRequest) -> HttpResponse {
         });
     }
 
+    // check if the maximum file size is exceeded
     if total_size > MAX_FILE_SIZE {
         return json(ErrorResponse {
             status: false,
@@ -94,7 +98,7 @@ async fn upload(mut payload: Multipart, request: HttpRequest) -> HttpResponse {
     let mut files: Vec<File> = Vec::new();
 
     loop {
-        // limit the file count
+        // check if the maximum file count is exceeded
         if files.len() >= MAX_FILE_COUNT {
             return json(ErrorResponse {
                 status: false,
@@ -104,7 +108,11 @@ async fn upload(mut payload: Multipart, request: HttpRequest) -> HttpResponse {
 
         // actual file handling goes here
         if let Ok(Some(mut field)) = payload.try_next().await {
+
+            // check if this is the right field
             if field.name() != "upload" { continue; }
+
+            // check if this is a file
             if field.content_type().is_none() { continue; }
 
             let file_name = field.content_disposition().get_filename().unwrap().to_string();
@@ -112,6 +120,7 @@ async fn upload(mut payload: Multipart, request: HttpRequest) -> HttpResponse {
             let destination = format!("./uploads/{}", &file_name);
             let mut saved_file: fs::File = fs::File::create(&destination).await.unwrap();
 
+            // write chunks of the file to the destination
             while let Ok(Some(chunk)) = field.try_next().await {
                 let _ = saved_file.write_all(&chunk).await.unwrap();
             }
@@ -125,7 +134,7 @@ async fn upload(mut payload: Multipart, request: HttpRequest) -> HttpResponse {
                 size: 0
             };
 
-            // save the file
+            // create the file
             let _ = web::block(|| fs::File::create(file_path))
                 .await
                 .unwrap();
@@ -135,6 +144,7 @@ async fn upload(mut payload: Multipart, request: HttpRequest) -> HttpResponse {
         else { break; }
     }
 
+    // check if there are any files uploaded at all
     if files.len() == 0 {
         return json(ErrorResponse {
             status: false,
@@ -158,6 +168,7 @@ async fn upload(mut payload: Multipart, request: HttpRequest) -> HttpResponse {
 
     println!("{} files uploaded: ({}) with the total size of {}", files.len(), &file_names, &readable_total_size);
 
+    // i think i am doing these wrong search about "struct"
     return json(UploadResponse {
         status: true,
         token: utils::generate_token()
