@@ -87,11 +87,18 @@ async function showResult(response) {
 
     if (status === true) {
         let token = response["token"];
-        let input = "<input maxLength='8' value='" + token + "' readonly />";
+        let input = "<input id='token-field' maxLength='8' value='" + token + "' readonly />";
         let icon = "<svg data-id=\"11\" fill=\"none\" height=\"24\" stroke=\"white\" stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" viewBox=\"0 0 24 24\" width=\"24\" xmlns=\"http://www.w3.org/2000/svg\"><polyline points=\"20 6 9 17 4 12\" /></svg>";
 
         setResult("Successful", "Save your token you will need it", input);
         setIcon(icon);
+
+        let tokenField = document.getElementById('token-field');
+
+        tokenField.onclick = function() {
+            navigator.clipboard.writeText(tokenField.value);
+            // TODO give some feedback (popup maybe)
+        }
     }
     else {
         let cause = response["cause"];
