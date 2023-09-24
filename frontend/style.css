@@ -66,9 +66,11 @@ input {
     letter-spacing: 0.35ch;
 }
 
-input:focus {
+input:focus,
+input:hover {
     outline: none;
     color: #4e97f2;
+    cursor: copy;
 }
 
 .button {
