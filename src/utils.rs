@@ -27,7 +27,11 @@ pub fn get_file_size(path: &str) -> Result<u64, &'static str> {
 }
 
 pub fn get_readable_size(size: &u64) -> String {
-    return human_bytes(size.clone() as f64);
+    human_bytes(size.clone() as f64)
+}
+
+pub fn times(n: usize) -> impl Iterator {
+    std::iter::repeat(()).take(n)
 }
 
 pub fn generate_token() -> String {
@@ -38,8 +42,4 @@ pub fn generate_token() -> String {
         token.push_str(&random.to_string());
     }
     return token;
-}
-
-pub fn times(n: usize) -> impl Iterator {
-    std::iter::repeat(()).take(n)
 }
