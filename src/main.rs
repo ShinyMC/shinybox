@@ -1,27 +1,31 @@
-mod utils;
+use std::io::Result;
 
-use std::io::{ Result };
-use std::path::Path;
-
-use actix_web::{App, get, HttpRequest, HttpResponse, HttpServer, post, web};
 use actix_multipart::Multipart;
+use actix_web::{App, get, HttpRequest, HttpResponse, HttpServer, post, web};
 use actix_web::http::header::CONTENT_LENGTH;
-use futures::{TryStreamExt};
+use futures::TryStreamExt;
+use serde::Serialize;
 use tokio::fs;
 use tokio::io::AsyncWriteExt as _;
 
+mod utils;
+
 #[actix_web::main]
 async fn main() -> Result<()> {
-    if !Path::new("./uploads").exists() {
-        fs::create_dir("./uploads").await?;
-    }
+    utils::create_dir("../../uploads");
 
     HttpServer::new(|| {
-        App::new()
-            .service(welcome)
+        let api = web::scope("/api/v1")
             .service(list_files)
             .service(upload)
-            .service(download)
+            .service(download);
+
+        App::new()
+            .service(page_content)
+            .service(page_style)
+            .service(page_script)
+            .service(api)
+            .default_service(web::route().to(|| HttpResponse::NotFound()))
     })
         .bind(("127.0.0.1", 8080))?
         .run()
@@ -29,50 +33,81 @@ async fn main() -> Result<()> {
 }
 
 #[get("/")]
-async fn welcome() -> HttpResponse {
-    HttpResponse::Ok().body(include_str!("./../client/index.html"))
+async fn page_content() -> HttpResponse {
+    HttpResponse::Ok()
+        .content_type("text/html; charset=utf-8")
+        .body(include_str!("../frontend/index.html"))
+}
+
+#[get("/style.css")]
+async fn page_style() -> HttpResponse {
+    HttpResponse::Ok()
+        .content_type("text/css; charset=utf-8")
+        .body(include_str!("../frontend/style.css"))
+}
+
+#[get("/script.js")]
+async fn page_script() -> HttpResponse {
+    HttpResponse::Ok()
+        .content_type("text/javascript; charset=utf-8")
+        .body(include_str!("../frontend/script.js"))
 }
 
 struct File {
     id: usize,
     name: String,
-    extension: String,
-    size: usize,
-    size_suffix: String
+    token: String,
+    size: u64
 }
 
-const MAX_FILE_SIZE: usize = 10 * 1024 * 1024;
+impl File {
+    fn set_size(&mut self, size: u64) {
+        self.size = size;
+    }
+}
+
+const MAX_FILE_SIZE: u64 = 10 * 1024 * 1024;
 const MAX_FILE_COUNT: usize = 3;
 
 #[post("/upload")]
 async fn upload(mut payload: Multipart, request: HttpRequest) -> HttpResponse {
     // limit the file size
-    let content_size: usize = match request.headers().get(CONTENT_LENGTH) {
+    let total_size: u64 = match request.headers().get(CONTENT_LENGTH) {
         Some(hv) => hv.to_str().unwrap_or("0").parse().unwrap(),
         None => 0
     };
 
-    if content_size == 0 {
-        return utils::error("The file is empty or missing");
+    if total_size == 0 {
+        return json(ErrorResponse {
+            status: false,
+            cause: String::from("The file is empty or missing")
+        });
     }
-    else if content_size > MAX_FILE_SIZE {
-        return utils::error("Maximum file size exceeded (10 MB)");
+
+    if total_size > MAX_FILE_SIZE {
+        return json(ErrorResponse {
+            status: false,
+            cause: String::from("Maximum file size exceeded (10MB)")
+        });
     }
 
     let mut files: Vec<File> = Vec::new();
 
     loop {
         // limit the file count
-        if files.len() >= MAX_FILE_COUNT { break; }
+        if files.len() >= MAX_FILE_COUNT {
+            return json(ErrorResponse {
+                status: false,
+                cause: String::from("Maximum file count exceeded (3)")
+            });
+        }
 
         // actual file handling goes here
         if let Ok(Some(mut field)) = payload.try_next().await {
-            //if field.name().eq("upload").not() { continue; }
-
+            if field.name() != "upload" { continue; }
             if field.content_type().is_none() { continue; }
 
             let file_name = field.content_disposition().get_filename().unwrap().to_string();
-            let file_extension = utils::get_file_extension(&file_name);
 
             let destination = format!("./uploads/{}", &file_name);
             let mut saved_file: fs::File = fs::File::create(&destination).await.unwrap();
@@ -81,64 +116,77 @@ async fn upload(mut payload: Multipart, request: HttpRequest) -> HttpResponse {
                 let _ = saved_file.write_all(&chunk).await.unwrap();
             }
 
-            let file_size = content_size;
-            let file_size_suffix = utils::get_size_suffix(&file_size);
-
-            // limit the file count
-            if files.len() >= MAX_FILE_COUNT {
-                println!("Stopped uploading files because exceeded allowed file count (3)");
-                break;
-            }
-
-            // limit the file size
-            if file_size > MAX_FILE_SIZE {
-                println!("Skipped file `{}` because it's exceeded the max size (10 MB)", file_name);
-                continue;
-            }
+            let file_path = format!(".uploads/{}", &file_name);
 
             let file = File {
                 id: 1,//db::generate_id(), // TODO: get the generated ID from the database
                 name: file_name.to_string(),
-                extension: file_extension,
-                size: file_size,
-                size_suffix: file_size_suffix
+                token: utils::generate_token(),
+                size: 0
             };
 
-            // handle folders
-            if file.extension == "" { // TODO: learn if you can zip them and tag them to know they're folders and unzip them when downloading
-                println!("Skipped file `{}` because it's a folder", &file.name);
-                continue;
-            }
-
             // save the file
-            let file_path = format!(".uploads/{}", &file_name);
-
             let _ = web::block(|| fs::File::create(file_path))
                 .await
                 .unwrap();
 
             files.push(file);
-        } else { break; }
+        }
+        else { break; }
     }
 
-    let file_count = files.len();
-    if file_count == 0 { return utils::error("no file"); } // TODO: return JSON response
+    if files.len() == 0 {
+        return json(ErrorResponse {
+            status: false,
+            cause: String::from("No files were uploaded")
+        });
+    }
 
     let mut file_names = String::new();
 
-    for file in &files {
-        let size = file.size.to_string() + String::from(&file.size_suffix).as_str();
-        let name = String::from(&file.name) + "(" + &size + "), ";
+    for file in &mut files {
+        let size = utils::get_file_size(&file.name).unwrap_or_else(|_| 0);
 
-        file_names += &name;
+        file.set_size(size);
+
+        file_names.push_str(&file.name);
+        file_names.push_str(", ");
     }
 
     let file_names = file_names.trim_end_matches(", ");
-    let total_size = &files.iter().map(|f| &f.size).sum();
-    let total_size_suffix = utils::get_size_suffix(total_size);
+    let readable_total_size = utils::get_readable_size(&total_size);
 
-    println!("{} files uploaded ({}) with the total size of {}{}", file_count, file_names, total_size, total_size_suffix);
-    return utils::success("success"); // TODO: return JSON response
+    println!("{} files uploaded: ({}) with the total size of {}", files.len(), &file_names, &readable_total_size);
+
+    return json(UploadResponse {
+        status: true,
+        token: utils::generate_token()
+    });
+}
+
+fn json<T: Serialize>(response: T) -> HttpResponse {
+    HttpResponse::Ok().append_header(("Content-Type", "application/json")).json(web::Json(response))
+}
+
+#[derive(Serialize)]
+struct UploadResponse {
+    status: bool,
+    token: String
+}
+
+#[derive(Serialize)]
+struct ErrorResponse {
+    status: bool,
+    cause: String
+}
+
+#[get("/get/{token}")]
+async fn get(token: web::Path<String>) -> HttpResponse {
+    if utils::is_file_exists("../../uploads") {
+        HttpResponse::Ok().body("exists")
+    } else {
+        HttpResponse::Ok().body("not exists")
+    }
 }
 
 #[post("/files")]

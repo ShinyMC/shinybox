@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>shinybox</title>
+
+    <!-- Axios -->
+    <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
+    <script src="script.js"></script>
+
+    <link rel="stylesheet" href="style.css">
+
+    <!-- Favicon -->
+    <link rel="apple-touch-icon" sizes="180x180" href="favicon/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="favicon/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="favicon/favicon-16x16.png">
+    <link rel="manifest" href="favicon/site.webmanifest">
+</head>
+<body>
+    <h1 class="title">Shiny Box</h1>
+    <p class="description">High performance and easy to use file service</p>
+
+    <div class="upload-container" id="input">
+        <div class="container-icon"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class=" text-white h-6 w-6 mb-2 opacity-75"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"></polyline><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"></path></svg></div>
+        <div class="container-title">Click to upload a file</div>
+
+        <label onclick="chooseFile()" class="button file-input">Choose File</label>
+    </div>
+
+    <div class="upload-container" id="submit">
+        <div class="container-icon"><svg fill="none" height="24" stroke="white" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewBox="0 0 24 24" width="24" xmlns="http://www.w3.org/2000/svg"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" x2="12" y1="3" y2="15" /></svg></div>
+        <div class="container-title">Selected: <span id="file-names"></span></div>
+
+        <label onclick="uploadFile()" class="button file-submit">Upload File</label>
+    </div>
+
+    <div class="upload-container" id="result">
+        <div class="container-icon"><span id="status-icon"></span></div>
+        <div class="container-title">Upload <span id="result-title"></span></div>
+
+        <div class="container-text">
+            <span id="result-description"></span>
+            <span id="result-description-alt"></span>
+        </div>
+    </div>
+</body>
+</html>

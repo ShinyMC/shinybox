@@ -1,37 +1,45 @@
-use actix_web::HttpResponse;
+use std::fs;
+use std::path::Path;
 
-pub fn success(message: &str) -> HttpResponse {
-    HttpResponse::Ok().body(format!("Success: {}", &message))
+use filesize::PathExt;
+use human_bytes::human_bytes;
+use rand::Rng;
+
+pub fn is_file_exists(path: &str) -> bool {
+    fs::metadata(&path).is_ok()
 }
 
-pub fn error(message: &str) -> HttpResponse {
-    HttpResponse::BadRequest().body(format!("Error: {}", &message))
+pub fn create_dir(path: &str) {
+    if !is_file_exists(&path) {
+        fs::create_dir(&path).expect("Failed to create directory");
+    }
 }
 
-pub fn get_size_suffix(size: &usize) -> String {
-    let mut size = size.clone() as f64;
-    let mut suffix = String::from("b");
-
-    if size > 1024.0 {
-        size /= 1024.0;
-        suffix = String::from("kb");
+pub fn get_file_size(path: &str) -> Result<u64, &'static str> {
+    if !is_file_exists(&path) {
+        return Err("File does not exist");
     }
 
-    if size > 1024.0 {
-        size /= 1024.0;
-        suffix = String::from("mb");
-    }
+    let path = Path::new(&path);
+    let metadata = path.symlink_metadata().unwrap();
 
-    return format!("{:.2}{}", size, suffix)
+    return Ok(path.size_on_disk_fast(&metadata).unwrap());
 }
 
-pub fn get_file_extension(file_name: &str) -> String {
-    let mut file_extension: String = String::from("");
+pub fn get_readable_size(size: &u64) -> String {
+    return human_bytes(size.clone() as f64);
+}
 
-    for c in (&file_name).chars().rev() {
-        if c == '.' { break; }
-        file_extension.insert(0, c);
+pub fn generate_token() -> String {
+    let mut token = String::new();
+
+    for _ in times(8) {
+        let random = rand::thread_rng().gen_range(0..10);
+        token.push_str(&random.to_string());
     }
+    return token;
+}
 
-    return file_extension;
+pub fn times(n: usize) -> impl Iterator {
+    std::iter::repeat(()).take(n)
 }
