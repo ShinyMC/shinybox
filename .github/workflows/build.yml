@@ -11,6 +11,10 @@ jobs:
   build:
     runs-on: ubuntu-latest
     if: "!contains(github.event.commits[0].message, '[skip]')"
+    strategy:
+      fail-fast: true
+      matrix:
+        target: [ x86_64-unknown-linux-musl ]
     steps:
     - name: Checkout Sources
       uses: actions/checkout@master
@@ -18,12 +22,9 @@ jobs:
     - name: Compile Rust
       uses: rust-build/rust-build.action@v1.4.3
       with:
-        RUSTTARGET: x86_64-unknown-linux-musl
+        RUSTTARGET: ${{ matrix.target }}
         UPLOAD_MODE: none
 
-    - name: Run Tests
-      run: cargo test --verbose
-
     - name: Upload Artifact
       uses: actions/upload-artifact@v3
       with:
@@ -31,19 +32,6 @@ jobs:
         path: |
           ${{ steps.compile.outputs.BUILT_ARCHIVE }}
           ${{ steps.compile.outputs.BUILT_CHECKSUM }}
-
-    - name: Upload Artifact
-      uses: actions/upload-artifact@v3
-      with:
-        name: Binary
-        path: |
-          ${{ steps.compile.outputs.BUILT_ARCHIVE }}
-          ${{ steps.compile.outputs.BUILT_CHECKSUM }}
-
-    - name: Create release
-      uses: Roang-zero1/github-create-release-action@v2
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
     - name: Create Release
       uses: softprops/action-gh-release@v1
