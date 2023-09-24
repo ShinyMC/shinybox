@@ -28,10 +28,10 @@ jobs:
     - name: Upload Artifact
       uses: actions/upload-artifact@v3
       with:
-        name: Binary
+        name: shinybox
         path: |
-          ${{ steps.compile.outputs.BUILT_ARCHIVE }}
-          ${{ steps.compile.outputs.BUILT_CHECKSUM }}
+          ${{ steps.build.outputs.BUILT_ARCHIVE }}
+          ${{ steps.build.outputs.BUILT_CHECKSUM }}
 
     - name: Create Release
       uses: softprops/action-gh-release@v1
@@ -39,5 +39,5 @@ jobs:
         name: shinybox
         tag_name: action-v${{ github.run_number }}
         files: |
-          ${{ steps.compile.outputs.BUILT_ARCHIVE }}
-          ${{ steps.compile.outputs.BUILT_CHECKSUM }}
+          ${{ steps.build.outputs.BUILT_ARCHIVE }}
+          ${{ steps.build.outputs.BUILT_CHECKSUM }}
