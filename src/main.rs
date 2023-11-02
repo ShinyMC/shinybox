@@ -82,7 +82,7 @@ async fn upload(mut payload: Multipart, request: HttpRequest) -> HttpResponse {
     let max_file_count: usize = 3;
 
     // check if the maximum file size is exceeded
-    if total_size >= max_file_size {
+    if total_size > max_file_size {
         return json(ErrorResponse {
             status: false,
             error: String::from("Maximum file size exceeded (10MB)")
@@ -99,7 +99,7 @@ async fn upload(mut payload: Multipart, request: HttpRequest) -> HttpResponse {
 
     loop {
         // check if the maximum file count is exceeded
-        if files.len() >= max_file_count {
+        if files.len() > max_file_count {
             return json(ErrorResponse {
                 status: false,
                 error: String::from("Maximum file count exceeded (3)")
