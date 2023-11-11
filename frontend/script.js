@@ -3,19 +3,26 @@
 let inputContainer;
 let submitContainer;
 let resultContainer;
+let filesContainer;
 
 // first load the input container and hide the submit container
 window.onload = function() {
     inputContainer = document.getElementById('input');
     submitContainer = document.getElementById('submit');
     resultContainer = document.getElementById('result');
+    filesContainer = document.getElementById('files');
 
-    inputContainer.style.display = 'block';
-    submitContainer.style.display = 'none';
-    resultContainer.style.display = 'none';
+    showInput();
 }
 
 let files;
+
+function showInput() {
+    inputContainer.style.display = 'block';
+    submitContainer.style.display = 'none';
+    resultContainer.style.display = 'none';
+    filesContainer.style.display = 'none';
+}
 
 function chooseFile() {
     let input = document.createElement('input');
@@ -63,9 +70,26 @@ async function uploadFile() {
     })
         .catch((e) => console.error(e))
         .then(response => {
-
             showResult(response.data);
         });
+}
+
+async function listFiles() {
+    inputContainer.style.display = 'none';
+    resultContainer.style.display = 'none';
+    filesContainer.style.display = 'block';
+
+    let descriptionText = document.getElementById('files-description');
+    descriptionText.innerHTML = "Here you can see all your files";
+
+    // TODO make this properly when backend is done
+    return await axios({
+        method: "get",
+        url: "http://localhost:8080/api/v1/list",
+        data: "abc 1 2 3",
+        headers: {"Content-Type": "text/plain"}
+    })
+        .catch((e) => console.error(e));
 }
 
 // TODO browse files
@@ -79,11 +103,36 @@ async function getFile() {
         .catch((e) => console.error(e));
 }
 
+// TODO download files, this can only be done after getFile is done
+async function downloadFile() {
+    return await axios({
+        method: "get",
+        url: "http://localhost:8080/api/v1/download",
+        data: "abc 1 2 3",
+        headers: {"Content-Type": "text/plain"}
+    })
+        .catch((e) => console.error(e));
+}
+
 async function showResult(response) {
     let status = response["status"];
 
     submitContainer.style.display = 'none';
     resultContainer.style.display = 'block';
+
+    let button = document.getElementsByClassName('list-button')[1];
+
+    // set button disabled
+    button.style.backgroundColor = '#808080';
+    button.disabled = true;
+    button.style.cursor = 'not-allowed';
+
+    // revert its color after 3 seconds
+    setTimeout(() => {
+        button.style.backgroundColor = '#1e90ff';
+        button.disabled = false;
+        button.style.cursor = 'pointer';
+    }, 3000);
 
     if (status === true) {
         let token = response["token"];
@@ -97,7 +146,7 @@ async function showResult(response) {
 
         tokenField.onclick = function() {
             navigator.clipboard.writeText(tokenField.value);
-            // TODO give some feedback (popup maybe)
+            // TODO give some feedback (popup maybe and click sound)
         }
     }
     else {

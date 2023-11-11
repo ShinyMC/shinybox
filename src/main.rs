@@ -9,6 +9,7 @@ use tokio::fs;
 use tokio::io::AsyncWriteExt as _;
 
 mod utils;
+mod database;
 
 #[actix_web::main]
 async fn main() -> Result<()> {
