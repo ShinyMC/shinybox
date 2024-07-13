@@ -1,5 +1,5 @@
 name: Release
-on: [ push, pull_request ]
+on: [push, pull_request]
 
 permissions:
   contents: read
@@ -12,37 +12,37 @@ jobs:
   build:
     name: release ${{ matrix.target }}
     runs-on: ubuntu-latest
-    if: "!contains(github.event.commits[0].message, '[skip]')"
+    if: "!contains(github.event.commits[0].message, '[skip ci]')"
     strategy:
       fail-fast: true
       matrix:
-        target: [ x86_64-pc-windows-gnu, x86_64-unknown-linux-musl ]
+        target: [x86_64-pc-windows-gnu, x86_64-unknown-linux-musl]
     steps:
-    - name: Checkout Sources
-      uses: actions/checkout@master
+      - name: Checkout Sources
+        uses: actions/checkout@v2
 
-    - name: Compile
-      id: compile
-      uses: rust-build/rust-build.action@v1.4.3
-      with:
-        RUSTTARGET: ${{ matrix.target }}
-        MINIFY: true
-        UPLOAD_MODE: none
-        #EXTRA_FILES: "LICENSE"
+      - name: Compile
+        id: compile
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --release --target ${{ matrix.target }}
+          use-cross: true
 
-    - name: Upload Artifact
-      uses: actions/upload-artifact@v3
-      with:
-        name: shinybox
-        path: |
-          ${{ steps.compile.outputs.BUILT_ARCHIVE }}
-          ${{ steps.compile.outputs.BUILT_CHECKSUM }}
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v2
+        with:
+          name: shinybox-${{ matrix.target }}
+          path: |
+            target/${{ matrix.target }}/release/shinybox
+            target/${{ matrix.target }}/release/shinybox.checksum
 
-    - name: Create Release
-      uses: softprops/action-gh-release@v1
-      with:
-        name: shinybox
-        tag_name: action-v${{ github.run_number }}
-        files: |
-          ${{ steps.compile.outputs.BUILT_ARCHIVE }}
-          ${{ steps.compile.outputs.BUILT_CHECKSUM }}
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+        with:
+          name: shinybox-${{ github.ref_name }}
+          tag_name: ${{ github.ref_name }}
+          files: |
+            target/${{ matrix.target }}/release/shinybox
+            target/${{ matrix.target }}/release/shinybox.checksum
