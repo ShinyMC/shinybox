@@ -1,6 +1,13 @@
 # ShinyBox
+![GitHub release (https://github.com/ShinyMC/shinybox/releases)](https://img.shields.io/github/v/release/ShinyMC/shinybox)
 
-This is a lightweight Rust-based web server and a website that provides file upload, listing, and download functionality.
+> This is a lightweight Rust-based web server and a website that provides file upload, listing, and download functionality.
+
+<div style="text-align:center;">
+   <img src="images/main_menu.png" width="30%" alt="main" align="left">
+   <img src="images/upload_file.png" width="30%" alt="upload" align="center">
+   <img src="images/list_files.png" width="30%" alt="list" align="right">
+</div>
 
 ## Getting Started
 
