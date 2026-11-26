@@ -1,0 +1,22 @@
+# Copy to shinybox.toml (or pass --config <path>) and adjust.
+# Every key is optional; the values below are the defaults.
+
+# Address the server listens on.
+bind = "127.0.0.1:8080"
+
+# Where the SQLite database and uploaded files live.
+data-dir = "data"
+
+# Base URL for share links. Set this when running behind a reverse proxy.
+# public-url = "https://box.example.com"
+
+# Require `Authorization: Bearer <token>` for uploads. Leave unset for open uploads.
+# upload-token = "change-me"
+
+# Limits for a single box.
+max-upload-size = "10 MB"
+max-files = 3
+
+# How long boxes live. Uploaders may choose any lifetime up to max-expiry.
+default-expiry = "1day"
+max-expiry = "7days"

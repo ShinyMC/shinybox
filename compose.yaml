@@ -1,0 +1,15 @@
+services:
+  shinybox:
+    image: ghcr.io/shinymc/shinybox:latest
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      SHINYBOX_PUBLIC_URL: http://localhost:8080
+      # SHINYBOX_UPLOAD_TOKEN: change-me
+    volumes:
+      - shinybox-data:/data
+    restart: unless-stopped
+
+volumes:
+  shinybox-data:
