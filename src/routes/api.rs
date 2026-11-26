@@ -13,10 +13,11 @@ use crate::{AppState, token, unix_now};
 
 /// Room for multipart boundaries and headers on top of the file contents.
 const MULTIPART_OVERHEAD: u64 = 64 * 1024;
-const DELETE_TOKEN_HEADER: &str = "X-Delete-Token";
+pub(super) const DELETE_TOKEN_HEADER: &str = "X-Delete-Token";
 
 pub fn configure(cfg: &mut web::ServiceConfig) {
-    cfg.route("/info", web::get().to(info))
+    cfg.service(web::scope("/uploads").configure(super::uploads::configure))
+        .route("/info", web::get().to(info))
         .route("/boxes", web::post().to(create_box))
         .route("/boxes/{code}", web::get().to(get_box))
         .route("/boxes/{code}", web::delete().to(delete_box))
@@ -34,7 +35,7 @@ struct Info {
 }
 
 #[derive(Serialize)]
-struct BoxView {
+pub(super) struct BoxView {
     code: String,
     url: String,
     created_at: i64,
@@ -81,6 +82,7 @@ async fn create_box(
         record,
         delete_token_hash: token::hash(&delete_token),
         files: &files,
+        pending_lifetime: None,
     };
 
     if let Err(error) = db::insert_box(&state.db, &new_box).await {
@@ -172,7 +174,7 @@ async fn find_box(state: &AppState, code: &str) -> Result<BoxRecord, AppError> {
         .ok_or(AppError::NotFound)
 }
 
-fn authorize_upload(state: &AppState, request: &HttpRequest) -> Result<(), AppError> {
+pub(super) fn authorize_upload(state: &AppState, request: &HttpRequest) -> Result<(), AppError> {
     let Some(expected) = &state.config.upload_token else {
         return Ok(());
     };
@@ -200,7 +202,7 @@ fn reject_oversized(state: &AppState, request: &HttpRequest) -> Result<(), AppEr
     }
 }
 
-fn box_view(
+pub(super) fn box_view(
     state: &AppState,
     request: &HttpRequest,
     record: BoxRecord,
@@ -227,6 +229,6 @@ fn share_url(state: &AppState, request: &HttpRequest, code: &str) -> String {
     }
 }
 
-fn header_str<'a>(request: &'a HttpRequest, name: &str) -> Option<&'a str> {
+pub(super) fn header_str<'a>(request: &'a HttpRequest, name: &str) -> Option<&'a str> {
     request.headers().get(name)?.to_str().ok()
 }

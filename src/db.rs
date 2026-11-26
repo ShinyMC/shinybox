@@ -36,18 +36,32 @@ pub struct NewBox<'a> {
     pub record: BoxRecord,
     pub delete_token_hash: String,
     pub files: &'a [FileRecord],
+    /// Set for a box whose files are still being uploaded: its lifetime in seconds once complete.
+    pub pending_lifetime: Option<i64>,
+}
+
+/// A box created through the resumable upload API whose files have not all arrived yet.
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct PendingBox {
+    pub code: String,
+    pub delete_token_hash: String,
+    pub pending_lifetime: i64,
 }
 
 pub async fn insert_box(pool: &SqlitePool, new: &NewBox<'_>) -> Result<(), sqlx::Error> {
     let mut tx = pool.begin().await?;
 
-    sqlx::query("INSERT INTO boxes (code, delete_token_hash, created_at, expires_at) VALUES (?, ?, ?, ?)")
-        .bind(&new.record.code)
-        .bind(&new.delete_token_hash)
-        .bind(new.record.created_at)
-        .bind(new.record.expires_at)
-        .execute(&mut *tx)
-        .await?;
+    sqlx::query(
+        "INSERT INTO boxes (code, delete_token_hash, created_at, expires_at, pending_lifetime)
+         VALUES (?, ?, ?, ?, ?)",
+    )
+    .bind(&new.record.code)
+    .bind(&new.delete_token_hash)
+    .bind(new.record.created_at)
+    .bind(new.record.expires_at)
+    .bind(new.pending_lifetime)
+    .execute(&mut *tx)
+    .await?;
 
     for (position, file) in (0_i64..).zip(new.files) {
         sqlx::query(
@@ -66,13 +80,46 @@ pub async fn insert_box(pool: &SqlitePool, new: &NewBox<'_>) -> Result<(), sqlx:
     tx.commit().await
 }
 
-/// Finds a box that has not expired yet.
+/// Finds a complete box that has not expired yet.
 pub async fn find_box(pool: &SqlitePool, code: &str, now: i64) -> Result<Option<BoxRecord>, sqlx::Error> {
-    sqlx::query_as("SELECT code, created_at, expires_at FROM boxes WHERE code = ? AND expires_at > ?")
-        .bind(code)
-        .bind(now)
-        .fetch_optional(pool)
-        .await
+    sqlx::query_as(
+        "SELECT code, created_at, expires_at FROM boxes
+         WHERE code = ? AND expires_at > ? AND pending_lifetime IS NULL",
+    )
+    .bind(code)
+    .bind(now)
+    .fetch_optional(pool)
+    .await
+}
+
+/// Finds a box that is still receiving files and whose upload window is open.
+pub async fn find_pending_box(
+    pool: &SqlitePool,
+    code: &str,
+    now: i64,
+) -> Result<Option<PendingBox>, sqlx::Error> {
+    sqlx::query_as(
+        "SELECT code, delete_token_hash, pending_lifetime FROM boxes
+         WHERE code = ? AND expires_at > ? AND pending_lifetime IS NOT NULL",
+    )
+    .bind(code)
+    .bind(now)
+    .fetch_optional(pool)
+    .await
+}
+
+/// Publishes a pending box. Returns false when it was not pending (any more).
+pub async fn complete_box(pool: &SqlitePool, record: &BoxRecord) -> Result<bool, sqlx::Error> {
+    let result = sqlx::query(
+        "UPDATE boxes SET created_at = ?, expires_at = ?, pending_lifetime = NULL
+         WHERE code = ? AND pending_lifetime IS NOT NULL",
+    )
+    .bind(record.created_at)
+    .bind(record.expires_at)
+    .bind(&record.code)
+    .execute(pool)
+    .await?;
+    Ok(result.rows_affected() == 1)
 }
 
 pub async fn box_files(pool: &SqlitePool, code: &str) -> Result<Vec<FileRecord>, sqlx::Error> {
@@ -82,7 +129,7 @@ pub async fn box_files(pool: &SqlitePool, code: &str) -> Result<Vec<FileRecord>,
         .await
 }
 
-/// Finds a file inside a box that has not expired yet.
+/// Finds a file inside a complete box that has not expired yet.
 pub async fn find_file(
     pool: &SqlitePool,
     code: &str,
@@ -92,7 +139,7 @@ pub async fn find_file(
     sqlx::query_as(
         "SELECT f.id, f.name, f.size, f.content_type
          FROM files f JOIN boxes b ON b.code = f.box_code
-         WHERE f.box_code = ? AND f.id = ? AND b.expires_at > ?",
+         WHERE f.box_code = ? AND f.id = ? AND b.expires_at > ? AND b.pending_lifetime IS NULL",
     )
     .bind(code)
     .bind(file_id)
@@ -101,6 +148,7 @@ pub async fn find_file(
     .await
 }
 
+/// The delete token hash of a live box, pending or complete, so an unfinished upload can be cancelled.
 pub async fn delete_token_hash(
     pool: &SqlitePool,
     code: &str,
