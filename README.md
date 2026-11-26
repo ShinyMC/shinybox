@@ -1,7 +1,7 @@
 # shinybox
 
-[![CI](https://github.com/ShinyMC/shinybox/actions/workflows/ci.yml/badge.svg)](https://github.com/ShinyMC/shinybox/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/ShinyMC/shinybox)](https://github.com/ShinyMC/shinybox/releases)
+[![CI](https://github.com/mordisk10/shinybox/actions/workflows/ci.yml/badge.svg)](https://github.com/mordisk10/shinybox/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/mordisk10/shinybox)](https://github.com/mordisk10/shinybox/releases)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 A tiny self-hosted file drop. Upload files, share a link, and let them expire.
@@ -29,7 +29,7 @@ embedded SQLite database, and the web interface is compiled into the executable.
 ### Docker
 
 ```sh
-docker run -d -p 8080:8080 -v shinybox-data:/data ghcr.io/shinymc/shinybox
+docker run -d -p 8080:8080 -v shinybox-data:/data ghcr.io/mordisk10/shinybox
 ```
 
 or with the included [`compose.yaml`](compose.yaml):
@@ -40,7 +40,7 @@ docker compose up -d
 
 ### Prebuilt binary
 
-Download the archive for your platform from the [releases page](https://github.com/ShinyMC/shinybox/releases), extract it and run:
+Download the archive for your platform from the [releases page](https://github.com/mordisk10/shinybox/releases), extract it and run:
 
 ```sh
 ./shinybox
@@ -51,7 +51,7 @@ Download the archive for your platform from the [releases page](https://github.c
 Requires Rust 1.89 or newer.
 
 ```sh
-cargo install --git https://github.com/ShinyMC/shinybox
+cargo install --git https://github.com/mordisk10/shinybox
 shinybox --bind 0.0.0.0:8080
 ```
 

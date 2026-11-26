@@ -1,6 +1,6 @@
 services:
   shinybox:
-    image: ghcr.io/shinymc/shinybox:latest
+    image: ghcr.io/mordisk10/shinybox:latest
     build: .
     ports:
       - "8080:8080"
