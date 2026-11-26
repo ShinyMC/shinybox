@@ -307,3 +307,219 @@ async fn serves_pages_with_security_headers() {
     assert_eq!(missing.status(), StatusCode::NOT_FOUND);
     assert_eq!(json(missing).await["error"], "not found");
 }
+
+// Resumable uploads
+
+async fn start_upload(server: &TestServer, declaration: Value) -> ServiceResponse<impl MessageBody> {
+    server
+        .call(TestRequest::post().uri("/api/uploads").set_json(declaration))
+        .await
+}
+
+fn chunk(started: &Value, file: usize, offset: u64, data: &'static [u8]) -> TestRequest {
+    let code = started["code"].as_str().unwrap();
+    let id = started["files"][file]["id"].as_str().unwrap();
+    TestRequest::put()
+        .uri(&format!("/api/uploads/{code}/files/{id}?offset={offset}"))
+        .insert_header(("X-Delete-Token", started["delete_token"].as_str().unwrap()))
+        .set_payload(data)
+}
+
+fn owned(request: TestRequest, started: &Value) -> TestRequest {
+    request.insert_header(("X-Delete-Token", started["delete_token"].as_str().unwrap()))
+}
+
+#[actix_web::test]
+async fn resumable_upload_in_chunks() {
+    let server = TestServer::start(|_| {}).await;
+    let response = start_upload(
+        &server,
+        serde_json::json!({
+            "expires": "1h",
+            "files": [{ "name": "movie.mp4", "size": 11 }, { "name": "../notes.txt", "size": 2 }]
+        }),
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::CREATED);
+    let started = json(response).await;
+    let code = started["code"].as_str().unwrap();
+    assert_eq!(started["files"][1]["name"], "notes.txt");
+    assert_eq!(started["files"][0]["content_type"], "video/mp4");
+    assert!(started["chunk_size"].as_u64().unwrap() > 0);
+
+    let response = server.call(chunk(&started, 0, 0, b"hello ")).await;
+    assert_eq!(json(response).await["received"], 6);
+
+    let hidden = server
+        .call(TestRequest::get().uri(&format!("/api/boxes/{code}")))
+        .await;
+    assert_eq!(
+        hidden.status(),
+        StatusCode::NOT_FOUND,
+        "pending boxes stay hidden"
+    );
+
+    let progress = json(
+        server
+            .call(owned(
+                TestRequest::get().uri(&format!("/api/uploads/{code}")),
+                &started,
+            ))
+            .await,
+    )
+    .await;
+    assert_eq!(progress["files"][0]["received"], 6);
+    assert_eq!(progress["files"][1]["received"], 0);
+
+    for (file, offset, data) in [(0, 6, &b"world"[..]), (1, 0, b"ok")] {
+        let response = server.call(chunk(&started, file, offset, data)).await;
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    let response = server
+        .call(owned(
+            TestRequest::post().uri(&format!("/api/uploads/{code}/complete")),
+            &started,
+        ))
+        .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let completed = json(response).await;
+    assert_eq!(completed["url"], format!("https://box.test/b/{code}"));
+    let lifetime = completed["expires_at"].as_i64().unwrap() - completed["created_at"].as_i64().unwrap();
+    assert_eq!(lifetime, 3600);
+
+    let file_id = started["files"][0]["id"].as_str().unwrap();
+    let response = server
+        .call(TestRequest::get().uri(&format!("/api/boxes/{code}/files/{file_id}")))
+        .await;
+    assert_eq!(test::read_body(response).await, "hello world");
+
+    let again = server.call(chunk(&started, 1, 2, b"")).await;
+    assert_eq!(
+        again.status(),
+        StatusCode::NOT_FOUND,
+        "a complete box takes no more chunks"
+    );
+}
+
+#[actix_web::test]
+async fn resumable_chunks_must_line_up() {
+    let server = TestServer::start(|_| {}).await;
+    let started = json(
+        start_upload(
+            &server,
+            serde_json::json!({ "files": [{ "name": "a", "size": 4 }] }),
+        )
+        .await,
+    )
+    .await;
+    let code = started["code"].as_str().unwrap();
+
+    let skipped = server.call(chunk(&started, 0, 2, b"cd")).await;
+    assert_eq!(skipped.status(), StatusCode::CONFLICT);
+
+    let too_long = server.call(chunk(&started, 0, 0, b"abcde")).await;
+    assert_eq!(too_long.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(
+        json(too_long).await["error"],
+        "chunk goes past the declared file size"
+    );
+
+    let stranger = server
+        .call(
+            TestRequest::put()
+                .uri(&format!(
+                    "/api/uploads/{code}/files/{}?offset=0",
+                    started["files"][0]["id"].as_str().unwrap()
+                ))
+                .insert_header(("X-Delete-Token", "guess"))
+                .set_payload("ab"),
+        )
+        .await;
+    assert_eq!(stranger.status(), StatusCode::FORBIDDEN);
+
+    server.call(chunk(&started, 0, 0, b"ab")).await;
+    let early = server
+        .call(owned(
+            TestRequest::post().uri(&format!("/api/uploads/{code}/complete")),
+            &started,
+        ))
+        .await;
+    assert_eq!(early.status(), StatusCode::CONFLICT);
+    assert_eq!(json(early).await["error"], "`a` has not been fully uploaded");
+}
+
+#[actix_web::test]
+async fn resumable_declarations_respect_limits() {
+    let server = TestServer::start(|config| {
+        config.max_files = 2;
+        config.max_upload_size = ByteSize::b(10);
+        config.upload_token = Some("s3cret".into());
+    })
+    .await;
+    let declare = |declaration: Value| {
+        TestRequest::post()
+            .uri("/api/uploads")
+            .insert_header((AUTHORIZATION, "Bearer s3cret"))
+            .set_json(declaration)
+    };
+
+    let anonymous = start_upload(
+        &server,
+        serde_json::json!({ "files": [{ "name": "a", "size": 1 }] }),
+    )
+    .await;
+    assert_eq!(anonymous.status(), StatusCode::UNAUTHORIZED);
+
+    let too_many = server
+        .call(declare(serde_json::json!({
+            "files": [{ "name": "a", "size": 1 }, { "name": "b", "size": 1 }, { "name": "c", "size": 1 }]
+        })))
+        .await;
+    assert_eq!(too_many.status(), StatusCode::BAD_REQUEST);
+
+    let too_large = server
+        .call(declare(
+            serde_json::json!({ "files": [{ "name": "a", "size": 11 }] }),
+        ))
+        .await;
+    assert_eq!(too_large.status(), StatusCode::PAYLOAD_TOO_LARGE);
+
+    let overflow = server
+        .call(declare(serde_json::json!({
+            "files": [{ "name": "a", "size": u64::MAX }, { "name": "b", "size": u64::MAX }]
+        })))
+        .await;
+    assert_eq!(overflow.status(), StatusCode::PAYLOAD_TOO_LARGE);
+
+    let malformed = server.call(declare(serde_json::json!({ "files": "a" }))).await;
+    assert_eq!(malformed.status(), StatusCode::BAD_REQUEST);
+    assert!(json(malformed).await["error"].is_string());
+
+    assert_eq!(server.stored_files(), 0);
+}
+
+#[actix_web::test]
+async fn unfinished_uploads_can_be_cancelled_or_expire() {
+    let server = TestServer::start(|_| {}).await;
+    let declaration = serde_json::json!({ "files": [{ "name": "a", "size": 4 }] });
+
+    let cancelled = json(start_upload(&server, declaration.clone()).await).await;
+    let response = server
+        .call(owned(
+            TestRequest::delete().uri(&format!("/api/boxes/{}", cancelled["code"].as_str().unwrap())),
+            &cancelled,
+        ))
+        .await;
+    assert_eq!(response.status(), StatusCode::NO_CONTENT);
+    assert_eq!(server.stored_files(), 0);
+
+    let abandoned = json(start_upload(&server, declaration).await).await;
+    server.call(chunk(&abandoned, 0, 0, b"ab")).await;
+    sqlx::query("UPDATE boxes SET expires_at = 0")
+        .execute(&server.state.db)
+        .await
+        .unwrap();
+    assert_eq!(cleanup::sweep(&server.state).await.unwrap(), 1);
+    assert_eq!(server.stored_files(), 0);
+}

@@ -2,7 +2,8 @@
 
 const STORAGE_KEY = "shinybox.boxes";
 const TOKEN_KEY = "shinybox.upload-token";
-const EXPIRY_PRESETS = [60 * 60, 24 * 60 * 60, 7 * 24 * 60 * 60];
+const EXPIRY_PRESETS = [60 * 60, 24 * 60 * 60, 7 * 24 * 60 * 60, 30 * 24 * 60 * 60];
+const CHUNK_RETRIES = 5;
 
 const $ = (id) => document.getElementById(id);
 
@@ -119,8 +120,13 @@ async function copyText(text) {
 // ---------------------------------------------------------------------------
 // API
 
-async function api(method, path, headers = {}) {
-  const response = await fetch(path, { method, headers });
+async function api(method, path, { headers = {}, json } = {}) {
+  const init = { method, headers: { ...headers } };
+  if (json !== undefined) {
+    init.headers["Content-Type"] = "application/json";
+    init.body = JSON.stringify(json);
+  }
+  const response = await fetch(path, init);
   if (response.status === 204) return null;
   const body = await response.json().catch(() => ({}));
   if (!response.ok) {
@@ -131,22 +137,79 @@ async function api(method, path, headers = {}) {
   return body;
 }
 
-function uploadBox(form, token, onProgress) {
+// Sends one chunk, reporting how many of its bytes are on the way. Resolves with the file's new size.
+function sendChunk(url, chunk, deleteToken, onProgress) {
   return new Promise((resolve, reject) => {
     const request = new XMLHttpRequest();
-    request.open("POST", "/api/boxes");
+    request.open("PUT", url);
     request.responseType = "json";
-    if (token) request.setRequestHeader("Authorization", `Bearer ${token}`);
-    request.upload.addEventListener("progress", (event) => {
-      if (event.lengthComputable) onProgress(event.loaded / event.total);
-    });
+    request.setRequestHeader("X-Delete-Token", deleteToken);
+    request.upload.addEventListener("progress", (event) => onProgress(event.loaded));
     request.addEventListener("load", () => {
-      if (request.status === 201) resolve(request.response);
-      else reject(new Error(sentence(request.response?.error ?? `upload failed (${request.status})`)));
+      if (request.status === 200) return resolve(request.response.received);
+      const error = new Error(sentence(request.response?.error ?? `upload failed (${request.status})`));
+      error.status = request.status;
+      reject(error);
     });
     request.addEventListener("error", () => reject(new Error("Network error, please try again")));
-    request.send(form);
+    request.send(chunk);
   });
+}
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// Network errors, conflicts and server errors are worth another try; anything else is final.
+function isTransient(error) {
+  return error.status === undefined || error.status === 409 || error.status >= 500;
+}
+
+// Uploads one file chunk by chunk. After a transient failure it asks the server
+// how much arrived and carries on from there, backing off between attempts.
+async function uploadFile(upload, index, file, onProgress) {
+  const owner = { "X-Delete-Token": upload.delete_token };
+  const url = `/api/uploads/${upload.code}/files/${upload.files[index].id}`;
+  let offset = 0;
+  let failures = 0;
+
+  while (offset < file.size) {
+    const chunk = file.slice(offset, offset + upload.chunk_size);
+    try {
+      offset = await sendChunk(`${url}?offset=${offset}`, chunk, upload.delete_token, (sent) =>
+        onProgress(offset + sent),
+      );
+      failures = 0;
+    } catch (error) {
+      failures += 1;
+      if (!isTransient(error) || failures > CHUNK_RETRIES) throw error;
+      await sleep(1000 * 2 ** (failures - 1));
+      const progress = await api("GET", `/api/uploads/${upload.code}`, { headers: owner }).catch(() => null);
+      if (progress) offset = progress.files[index].received;
+    }
+    onProgress(offset);
+  }
+}
+
+// Declares the box, uploads every file and publishes the box. A failed upload is cancelled.
+async function uploadBox(files, expiry, token, onProgress) {
+  const upload = await api("POST", "/api/uploads", {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    json: { expires: `${expiry}s`, files: files.map(({ name, size }) => ({ name, size })) },
+  });
+  const owner = { "X-Delete-Token": upload.delete_token };
+  const total = files.reduce((sum, file) => sum + file.size, 0);
+  let done = 0;
+
+  try {
+    for (const [index, file] of files.entries()) {
+      await uploadFile(upload, index, file, (bytes) => onProgress(total ? (done + bytes) / total : 1));
+      done += file.size;
+    }
+    const box = await api("POST", `/api/uploads/${upload.code}/complete`, { headers: owner });
+    return { ...box, delete_token: upload.delete_token };
+  } catch (error) {
+    api("DELETE", `/api/boxes/${upload.code}`, { headers: owner }).catch(() => {});
+    throw error;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -298,17 +361,13 @@ async function submitUpload(event) {
   event.preventDefault();
   if (state.uploading || state.files.length === 0 || validationError()) return;
 
-  const form = new FormData();
-  form.append("expires", `${state.expiry}s`);
-  for (const file of state.files) form.append("file", file, file.name);
-
   const token = $("token-input").value.trim();
   if (token) sessionStorage.setItem(TOKEN_KEY, token);
 
   setUploadError(null);
   setUploading(true);
   try {
-    const box = await uploadBox(form, token, setProgress);
+    const box = await uploadBox(state.files, state.expiry, token, setProgress);
     rememberBox(box);
     state.files = [];
     setUploading(false);
@@ -376,7 +435,7 @@ async function deleteBox(saved) {
   if (!confirm(`Delete box ${saved.code}? Anyone with the link will lose access.`)) return;
   try {
     await api("DELETE", `/api/boxes/${encodeURIComponent(saved.code)}`, {
-      "X-Delete-Token": saved.deleteToken,
+      headers: { "X-Delete-Token": saved.deleteToken },
     });
     toast("Box deleted");
   } catch (error) {
@@ -485,6 +544,10 @@ function bindUpload() {
   // A file dropped next to the drop zone should not replace the page.
   window.addEventListener("dragover", (event) => event.preventDefault());
   window.addEventListener("drop", (event) => event.preventDefault());
+  // Leaving the page would abandon an upload that may have been running for a long time.
+  window.addEventListener("beforeunload", (event) => {
+    if (state.uploading) event.preventDefault();
+  });
 
   $("expiry-options").addEventListener("keydown", moveExpiry);
   $("upload-form").addEventListener("submit", submitUpload);

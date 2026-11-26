@@ -95,8 +95,7 @@ async fn store_file(state: &AppState, field: Field, remaining: u64) -> Result<Fi
         .await
         .map_err(|error| match error {
             WriteError::TooLarge => AppError::TooLarge(state.config.max_upload_size_label()),
-            WriteError::Payload(message) => AppError::BadRequest(message),
-            WriteError::Io(error) => AppError::from(error),
+            other => AppError::from(other),
         })?;
 
     Ok(FileRecord {
@@ -121,7 +120,7 @@ async fn read_text(field: Field) -> Result<String, AppError> {
     String::from_utf8(bytes).map_err(|_| AppError::BadRequest("form field is not valid UTF-8".into()))
 }
 
-fn parse_expiry(text: &str, accepts: impl Fn(Duration) -> bool) -> Result<Duration, AppError> {
+pub(crate) fn parse_expiry(text: &str, accepts: impl Fn(Duration) -> bool) -> Result<Duration, AppError> {
     humantime::parse_duration(text.trim())
         .ok()
         .filter(|&expiry| accepts(expiry))
@@ -130,7 +129,7 @@ fn parse_expiry(text: &str, accepts: impl Fn(Duration) -> bool) -> Result<Durati
 
 /// Reduces a client-supplied file name to a safe, readable base name.
 /// The result is only ever shown to people; it never becomes a path on disk.
-fn display_name(raw: Option<&str>) -> String {
+pub(crate) fn display_name(raw: Option<&str>) -> String {
     let base = raw
         .unwrap_or_default()
         .rsplit(['/', '\\'])

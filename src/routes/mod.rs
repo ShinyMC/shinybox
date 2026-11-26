@@ -1,4 +1,5 @@
 mod api;
+mod uploads;
 mod web;
 
 use actix_web::{HttpResponse, web as actix};

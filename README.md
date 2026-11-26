@@ -21,6 +21,7 @@ embedded SQLite database, and the web interface is compiled into the executable.
 - **Everything expires.** Uploaders pick a lifetime (1 hour, 1 day, 7 days by default) and expired boxes are swept from disk automatically.
 - **Delete early.** Every upload returns a secret delete token. The web interface remembers it in your browser under *My boxes*.
 - **No accounts.** Uploads are open by default, or locked behind a single bearer token.
+- **Any size.** Large files go up in resumable chunks that fit through proxies with body limits (Cloudflare caps requests at 100 MB) and survive flaky connections.
 - **curl friendly.** One request to upload, plain JSON back.
 - **Safe by default.** Files are stored under random ids, never under client-supplied names; downloads are always served as attachments with a sandboxing CSP; size limits are enforced on the actual bytes received.
 
@@ -79,13 +80,15 @@ Durations use [humantime](https://docs.rs/humantime) syntax (`30m`, `12h`, `3day
 
 ### Behind a reverse proxy
 
-Set `public-url` so share links point at your public address, and raise the proxy's body size limit to at least
-`max-upload-size`. For nginx:
+Set `public-url` so share links point at your public address. The web interface uploads through the resumable API
+in 32 MiB chunks, so the proxy only needs to accept bodies a little larger than that, however big the files are.
+`curl` uploads to `/api/boxes` are single requests and need a body limit of at least `max-upload-size`. For nginx:
 
 ```nginx
 location / {
     proxy_pass http://127.0.0.1:8080;
-    client_max_body_size 20m;
+    client_max_body_size 40m;      # or 0 for no limit
+    proxy_request_buffering off;   # stream uploads instead of spooling them to disk first
 }
 ```
 
@@ -98,7 +101,11 @@ All responses are JSON. Errors look like `{"error": "not found"}` with a matchin
 | `POST` | `/api/boxes` | Create a box from a multipart form |
 | `GET` | `/api/boxes/{code}` | Box details and file list |
 | `GET` | `/api/boxes/{code}/files/{id}` | Download a file (supports range requests) |
-| `DELETE` | `/api/boxes/{code}` | Delete a box, requires `X-Delete-Token` |
+| `DELETE` | `/api/boxes/{code}` | Delete a box or cancel an upload, requires `X-Delete-Token` |
+| `POST` | `/api/uploads` | Start a resumable upload |
+| `GET` | `/api/uploads/{code}` | Bytes received so far, requires `X-Delete-Token` |
+| `PUT` | `/api/uploads/{code}/files/{id}?offset=N` | Append a chunk, requires `X-Delete-Token` |
+| `POST` | `/api/uploads/{code}/complete` | Publish the box, requires `X-Delete-Token` |
 | `GET` | `/api/info` | Upload limits of this server |
 | `GET` | `/health` | Liveness check, returns `ok` |
 
@@ -126,6 +133,30 @@ curl -F file=@report.pdf -F file=@photo.jpg -F expires=1h https://box.example.co
 
 The delete token is only returned once. When the server requires an upload token, add
 `-H "Authorization: Bearer <token>"`.
+
+### Resumable upload
+
+For files larger than a proxy lets through in one request. Declare the files first; the same upload token rules apply:
+
+```sh
+curl -H 'Content-Type: application/json' \
+  -d '{"expires": "7days", "files": [{"name": "backup.tar", "size": 5368709120}]}' \
+  https://box.example.com/api/uploads
+```
+
+The response holds the box `code`, its `delete_token`, a suggested `chunk_size` and the file ids. Then send each file
+as raw bytes, chunk by chunk, at the offset the previous chunk ended on:
+
+```sh
+curl -X PUT -H "X-Delete-Token: b1Zr0…" --data-binary @chunk-0 \
+  "https://box.example.com/api/uploads/k7Qm2xPa9L/files/V5JPgMwqH6dNepeQ?offset=0"
+# {"received": 33554432}
+```
+
+A chunk at the wrong offset is refused with `409`, and a failed chunk leaves the file as it was, so after an error ask
+`GET /api/uploads/{code}` how much arrived and carry on from there. When every file is complete,
+`POST /api/uploads/{code}/complete` publishes the box and returns it like a normal upload. Until then nobody else can
+see it, and uploads left unfinished for 24 hours are deleted.
 
 ### Download and delete
 
