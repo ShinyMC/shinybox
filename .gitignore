@@ -1,5 +1,5 @@
 /target
+/data
+/shinybox.toml
 .idea/
-Cargo.lock
-
-uploads/*
+.vscode/

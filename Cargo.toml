@@ -1,29 +1,41 @@
 [package]
 name = "shinybox"
-version = "0.1.0"
+version = "0.2.0"
+edition = "2024"
+rust-version = "1.89"
+description = "A tiny self-hosted file drop: upload files, share a link, let them expire."
 authors = ["mordisk"]
-edition = "2021"
+license = "MIT"
+repository = "https://github.com/ShinyMC/shinybox"
+readme = "README.md"
+keywords = ["file-sharing", "self-hosted", "upload", "actix-web"]
+categories = ["web-programming::http-server", "command-line-utilities"]
 
 [dependencies]
-# core
-tokio = { version = "1.32.0", features = ["full"] }
-serde = { version = "1.0", features = ["derive"] }
+actix-files = "0.7.4"
+actix-multipart = "0.7.2"
+actix-web = "4.12.1"
+bytesize = { version = "2.7.0", features = ["serde"] }
+clap = { version = "4.6.10", features = ["derive", "env"] }
+futures-util = "0.3.34"
+humantime = "2.4.0"
+humantime-serde = "1.1.1"
+mime_guess = "2.0.5"
+rand = "0.10.4"
+serde = { version = "1.0.229", features = ["derive"] }
+sha2 = "0.11.0"
+sqlx = { version = "0.8.6", default-features = false, features = ["runtime-tokio", "sqlite", "migrate", "macros"] }
+thiserror = "2.0.21"
+tokio = { version = "1.54.1", features = ["rt-multi-thread", "macros", "fs", "time", "signal"] }
+toml = "1.2.3"
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
 
-# storage
-sqlx = { version = "0.7.1" , features = ["mysql"] }
-toml = "0.8.0"
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
 
-# actix
-actix-web = "4"
-actix-files = "0.6.2"
-actix-multipart = "0.6.1"
-
-# database
-
-
-# utils
-futures = "0.3.28"
-human_bytes = { version = "0.4", features = ["fast"] }
-filesize = "0.2.0"
-load_file = "1.0.1"
-rand = "0.8.5"
+[dev-dependencies]
+serde_json = "1.0.154"
+tempfile = "3.27.0"
