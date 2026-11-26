@@ -1,74 +1,146 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
-    <title>shinybox</title>
-
-    <!-- Axios -->
-    <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
-    <script src="script.js"></script>
-
-    <link rel="stylesheet" href="style.css">
-
-    <!-- Favicon -->
-    <link rel="apple-touch-icon" sizes="180x180" href="favicon/apple-touch-icon.png">
-    <link rel="icon" type="image/png" sizes="32x32" href="favicon/favicon-32x32.png">
-    <link rel="icon" type="image/png" sizes="16x16" href="favicon/favicon-16x16.png">
-    <link rel="manifest" href="favicon/site.webmanifest">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Share files with a link that expires.">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#0b0b0d">
+  <title>shinybox</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/app.css">
+  <script type="module" src="/app.js"></script>
 </head>
 <body>
-    <h1 class="title">Shiny Box</h1>
-    <p class="description">High performance and easy to use file service</p>
+  <header class="topbar">
+    <a class="brand" href="/" data-link>
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M3 8.5 12 4l9 4.5v7L12 20l-9-4.5z"/><path d="M3 8.5 12 13l9-4.5M12 13v7"/><path d="M18.5 1.5v3M17 3h3" stroke-linecap="round"/></svg>
+      shinybox
+    </a>
+    <nav class="nav" aria-label="Main">
+      <a href="/" data-link data-nav="upload">Upload</a>
+      <a href="/mine" data-link data-nav="mine">My boxes</a>
+    </nav>
+  </header>
 
-    <div class="container" id="input">
-        <div class="container-icon"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class=" text-white h-6 w-6 mb-2 opacity-75"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"></polyline><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"></path></svg></div>
-        <div class="container-title">Click to upload a file</div>
+  <main>
+    <!-- Upload -->
+    <section id="view-upload" hidden>
+      <h1>Share files, <span class="shine">not accounts.</span></h1>
+      <p class="lede">Drop files, get a link. They disappear when time runs out.</p>
 
-        <label onclick="chooseFile()" class="button">Choose File</label>
-        <label onclick="listFiles()" class="button list-button">List Files</label>
-    </div>
+      <form id="upload-form" novalidate>
+        <label class="dropzone" id="dropzone">
+          <input class="visually-hidden" type="file" id="file-input" multiple>
+          <span class="dropzone-icon" aria-hidden="true">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m17 8-5-5-5 5"/><path d="M12 3v12"/></svg>
+          </span>
+          <span><strong>Drop files here</strong> or <span class="link">browse</span></span>
+          <span class="hint" id="limits-hint"></span>
+        </label>
 
-    <div class="container" id="submit">
-        <div class="container-icon"><svg fill="none" height="24" stroke="white" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewBox="0 0 24 24" width="24" xmlns="http://www.w3.org/2000/svg"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" x2="12" y1="3" y2="15" /></svg></div>
-        <div class="container-title">Selected: <span id="file-names"></span></div>
+        <ul class="files card" id="selected-files" hidden></ul>
 
-        <label onclick="uploadFile()" class="button">Upload File</label>
-    </div>
+        <label class="field" id="token-field" hidden>
+          <span class="hint">Upload token</span>
+          <input type="password" id="token-input" autocomplete="current-password" spellcheck="false">
+        </label>
 
-    <div class="container" id="result">
-        <div class="container-icon"><span id="status-icon"></span></div>
-        <div class="container-title">Upload <span id="result-title"></span></div>
+        <p class="error" id="upload-error" role="alert" hidden></p>
 
-        <div class="container-text">
-            <span id="result-description"></span>
-            <span id="result-description-alt"></span>
+        <div class="row">
+          <div class="segmented" id="expiry-options" role="radiogroup" aria-label="Expires after"></div>
+          <button class="btn" type="submit" id="upload-button" disabled>Upload</button>
         </div>
 
-        <label onclick="listFiles()" class="button list-button">List Files</label>
-    </div>
+        <div class="progress" id="upload-progress" hidden><span></span></div>
+      </form>
+    </section>
 
-    <div class="container" id="files">
-        <div class="container-icon"><svg className=" h-4 w-4" fill="none" height="24" stroke="white" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewBox="0 0 24 24" width="24" xmlns="http://www.w3.org/2000/svg"><rect height="9" rx="1" width="7" x="3" y="3" /><rect height="5" rx="1" width="7" x="14" y="3" /><rect height="9" rx="1" width="7" x="14" y="12" /><rect height="5" rx="1" width="7" x="3" y="16" /></svg></div>
-        <div class="container-title">Files <span id="files-count"></span></div>
-
-        <div class="container-text">
-            <span id="files-description"></span>
+    <!-- Upload finished -->
+    <section id="view-done" hidden>
+      <div class="card result">
+        <div class="badge badge-success" aria-hidden="true">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
         </div>
-
-        <div class="files-container">
-            <div class="file-card">
-                <div class="container-icon"><svg className=" h-5 w-5 text-zinc-500 dark:text-zinc-400" fill="none" height="24" stroke="white" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewBox="0 0 24 24" width="24" xmlns="http://www.w3.org/2000/svg"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z" /><polyline points="14 2 14 8 20 8" /></svg></div>
-                <div>some.png</div>
-                <div>12.7 kb</div>
-                <div>image/png</div>
-                <div>11 Nov 2023 09∶25∶32</div>
-                <div class="container-icon clickable" onclick="downloadFile()"><svg className=" h-5 w-5 text-zinc-500 dark:text-zinc-400" fill="none" height="24" stroke="white" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewBox="0 0 24 24" width="24" xmlns="http://www.w3.org/2000/svg"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" x2="12" y1="15" y2="3" /></svg></div>
-            </div>
+        <h2>Your box is ready</h2>
+        <p class="hint" id="done-summary"></p>
+        <p class="code" id="done-code"></p>
+        <div class="share">
+          <input id="done-url" readonly aria-label="Share link">
+          <button class="btn" type="button" id="done-copy">Copy link</button>
         </div>
+        <p class="note">This browser remembers the box, so you can delete it early from <a class="link" href="/mine" data-link>My boxes</a>.</p>
+      </div>
+      <div class="row row-center">
+        <a class="btn btn-ghost" href="/" data-link>Upload more</a>
+      </div>
+    </section>
 
-        <label onclick="showInput()" class="button list-button">Go Back</label>
-    </div>
+    <!-- Shared box -->
+    <section id="view-box" hidden>
+      <div class="box-head">
+        <div>
+          <p class="hint">Box</p>
+          <h1 class="mono" id="box-code"></h1>
+        </div>
+        <span class="pill"><span class="dot"></span><span id="box-expiry"></span></span>
+      </div>
+      <ul class="files card" id="box-files"></ul>
+      <p class="hint footer-hint" id="box-summary"></p>
+    </section>
+
+    <!-- My boxes -->
+    <section id="view-mine" hidden>
+      <h1>My boxes</h1>
+      <p class="lede">Boxes you uploaded from this browser.</p>
+      <ul class="files card" id="mine-list" hidden></ul>
+      <div class="card empty" id="mine-empty" hidden>
+        <p>No boxes yet.</p>
+        <a class="btn" href="/" data-link>Share some files</a>
+      </div>
+    </section>
+
+    <!-- Missing or expired box -->
+    <section id="view-gone" hidden>
+      <div class="card result">
+        <div class="badge badge-danger" aria-hidden="true">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 8v5M12 16.5v.01"/><circle cx="12" cy="12" r="9"/></svg>
+        </div>
+        <h2>This box is gone</h2>
+        <p class="hint">It expired or was deleted by its owner.</p>
+        <div class="row row-center">
+          <a class="btn" href="/" data-link>Share your own files</a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <template id="file-row">
+    <li class="file">
+      <span class="file-type"></span>
+      <span class="file-name"></span>
+      <span class="file-size meta"></span>
+      <span class="file-action"></span>
+    </li>
+  </template>
+
+  <template id="icon-download"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/></svg></template>
+  <template id="icon-copy"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg></template>
+  <template id="icon-trash"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg></template>
+  <template id="icon-x"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></template>
+
+  <template id="box-row">
+    <li class="file box-row">
+      <span>
+        <a class="mono box-link" data-link></a>
+        <span class="meta box-meta"></span>
+      </span>
+      <span class="pill"><span class="dot"></span><span class="box-expiry"></span></span>
+      <span class="actions"></span>
+    </li>
+  </template>
 </body>
 </html>
